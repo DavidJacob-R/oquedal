@@ -1,89 +1,103 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-import { NextResponse, NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import { pool } from "@/lib/db";
 
-async function comparePassword(input: string, stored: string | null): Promise<boolean> {
-  if (!stored) return false;
-  const s = String(stored);
-  // Si viene bcrypt, lo usamos; si no, comparamos plano (como pediste)
-  if (s.startsWith("$2a$") || s.startsWith("$2b$") || s.startsWith("$2y$")) {
-    try {
-      const bcrypt = await import("bcryptjs");
-      return await bcrypt.compare(input, s);
-    } catch {
-      return input === s;
-    }
-  }
-  return input === s;
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+function isUuid(v: unknown): v is string { return typeof v === "string" && UUID_RE.test(v); }
+
+function readCookie(headers: Headers, name: string): string | null {
+  const raw = headers.get("cookie") || "";
+  const m = new RegExp(`(?:^|;\\s*)${name}=([^;]+)`, "i").exec(raw);
+  if (!m?.[1]) return null;
+  const val = decodeURIComponent(m[1]);
+  if (!val || val === "undefined" || val === "null") return null;
+  return val;
+}
+const readAnonUid = (h: Headers) => readCookie(h, "uid_local");
+
+async function getOrCreateClienteParaUsuario(userId: string) {
+  const q1 = await pool.query(
+    `select id, nombre, telefono, email
+       from public.cliente
+      where usuario_id = $1::uuid
+      limit 1`,
+    [userId]
+  );
+  if (q1.rowCount) return q1.rows[0];
+
+  const uq = await pool.query(
+    `select coalesce(nombre, split_part(email,'@',1)) as nombre, email, telefono
+       from public.auth_local_usuario
+      where id = $1::uuid
+      limit 1`,
+    [userId]
+  );
+  const nombre = uq.rows?.[0]?.nombre || "cliente";
+  const email = uq.rows?.[0]?.email || null;
+  const telefono = uq.rows?.[0]?.telefono || null;
+
+  const ins = await pool.query(
+    `insert into public.cliente (nombre, telefono, email, activo, usuario_id, uid_local)
+     values ($1,$2,$3,true,$4,null)
+     returning id, nombre, telefono, email`,
+    [nombre, telefono, email, userId]
+  );
+  return ins.rows[0];
 }
 
-export async function POST(req: NextRequest) {
-  const body = await req.json().catch(() => null);
-  const email = body?.email?.toString().trim().toLowerCase();
-  const password = body?.password?.toString() ?? "";
-  if (!email || !password) {
-    return NextResponse.json({ ok: false, msg: "datos invalidos" }, { status: 400 });
-  }
-
-  const client = await pool.connect();
+export async function GET(req: Request) {
   try {
-    // 1) admin en public.usuario
-    const qa = await client.query(
-      `select u.id, u.nombre, u.pass_hash, r.nombre as rol, u.activo
-         from public.usuario u
-         join public.rol r on r.id = u.rol_id
-        where lower(u.email) = $1
-        limit 1`,
-      [email]
-    );
+    const userId = readCookie(req.headers, "usuario_id");
+    const anon = readAnonUid(req.headers);
 
-    if (qa.rowCount) {
-      const row = qa.rows[0];
-      const okPass = await comparePassword(password, row.pass_hash);
-      if (okPass && (row.activo ?? true)) {
-        const res = NextResponse.json({
-          ok: true,
-          user: { id: row.id as string, nombre: (row.nombre as string) || "Administrador", rol: "admin" },
-          redirect: "/admin/panel",
-        });
-        res.cookies.set("admin_id", String(row.id), { path: "/", httpOnly: false, sameSite: "lax", maxAge: 60 * 60 * 24 * 7 });
+    if (isUuid(userId)) {
+      // fusionar anonimo → usuario si existe
+      if (anon) {
+        await pool.query(
+          `update public.cliente
+              set usuario_id = $1
+            where uid_local = $2
+              and (usuario_id is null or usuario_id = $1)`,
+          [userId, anon]
+        );
+      }
+
+      const u = await pool.query(
+        `select id, email, coalesce(nombre, split_part(email,'@',1)) as nombre, telefono
+           from public.auth_local_usuario
+          where id = $1::uuid
+          limit 1`,
+        [userId]
+      );
+      if (!u.rowCount) {
+        const res = NextResponse.json({ ok: true, auth: false });
         res.cookies.set("usuario_id", "", { path: "/", maxAge: 0, sameSite: "lax" });
         return res;
       }
+
+      const user = u.rows[0];
+      const cliente = await getOrCreateClienteParaUsuario(userId);
+
+      const res = NextResponse.json({
+        ok: true, auth: true, user, cliente,
+        displayName: cliente?.nombre || user?.nombre
+      });
+      res.cookies.set("usuario_id", String(userId), { path: "/", httpOnly: false, sameSite: "lax", maxAge: 60 * 60 * 24 * 7 });
+      return res;
     }
 
-    // 2) cliente en auth_local_usuario (y nombre desde cliente si existe)
-    const qc = await client.query(
-      `select a.id, a.password_hash, coalesce(c.nombre, a.nombre) as nombre
-         from public.auth_local_usuario a
-         left join public.cliente c on c.usuario_id = a.id
-        where lower(a.email) = $1
-        limit 1`,
-      [email]
-    );
-
-    if (qc.rowCount) {
-      const row = qc.rows[0];
-      const okPass = await comparePassword(password, row.password_hash);
-      if (okPass) {
-        const res = NextResponse.json({
-          ok: true,
-          user: { id: row.id as string, nombre: (row.nombre as string) || "Cliente", rol: "cliente" },
-          redirect: "/cliente/pedidos",
-        });
-        res.cookies.set("usuario_id", String(row.id), { path: "/", httpOnly: false, sameSite: "lax", maxAge: 60 * 60 * 24 * 7 });
-        res.cookies.set("admin_id", "", { path: "/", maxAge: 0, sameSite: "lax" });
-        return res;
-      }
+    // anonimo
+    const res = NextResponse.json({ ok: true, auth: false });
+    if (!anon) {
+      const gen = crypto.randomUUID();
+      res.cookies.set("uid_local", gen, { path: "/", httpOnly: false, sameSite: "lax", maxAge: 60 * 60 * 24 * 30 });
     }
-
-    return NextResponse.json({ ok: false, msg: "credenciales invalidas" }, { status: 401 });
+    return res;
   } catch (e) {
     console.error(e);
-    return NextResponse.json({ ok: false, msg: "error interno" }, { status: 500 });
-  } finally {
-    client.release();
+    return NextResponse.json({ ok: false, auth: false, msg: "error_interno" }, { status: 500 });
   }
 }

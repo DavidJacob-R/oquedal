@@ -1,82 +1,134 @@
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { pool } from "@/lib/db";
 
-/**
- * Devuelve el usuario actual a partir de cookies:
- * - Si hay admin_id: busca en public.usuario (rol admin).
- * - Si hay usuario_id: intenta public.usuario; si no, cliente.nombre o auth_local_usuario.nombre/email.
- * Respuesta:
- *   { ok: true, user: null }  // no autenticado
- *   { ok: true, user: { id, nombre, rol: "admin" | "cliente" } }
- */
-export async function GET() {
-  const c = cookies();
-  const adminId = c.get("admin_id")?.value || null;
-  const userId = c.get("usuario_id")?.value || null;
+// --- helpers ---
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-  const client = await pool.connect();
-  try {
-    if (adminId) {
-      const qa = await client.query(
-        `select u.nombre as nombre
-           from public.usuario u
-           join public.rol r on r.id = u.rol_id
-          where u.id = $1
+function isUuid(v: unknown): v is string {
+  return typeof v === "string" && UUID_RE.test(v);
+}
+
+function readCookie(headers: Headers, name: string): string | null {
+  const raw = headers.get("cookie") || "";
+  const m = new RegExp(`(?:^|;\\s*)${name}=([^;]+)`, "i").exec(raw);
+  if (!m?.[1]) return null;
+  const val = decodeURIComponent(m[1]);
+  if (!val || val === "undefined" || val === "null") return null;
+  return val;
+}
+
+function wantAnonUid(headers: Headers): string | null {
+  const raw = headers.get("cookie") || "";
+  const m = /(?:^|;\s*)uid_local=([^;]+)/i.exec(raw);
+  return m?.[1] ? decodeURIComponent(m[1]) : null;
+}
+
+async function getOrCreateClienteParaUsuario(userId: string) {
+  // si ya existe cliente ligado al usuario, retornalo
+  const q1 = await pool.query(
+    `select id, nombre, telefono, email
+       from public.cliente
+      where usuario_id = $1::uuid
+      limit 1`,
+    [userId]
+  );
+  if (q1.rowCount) return q1.rows[0];
+
+  // trae datos del usuario para poblar nombre/email
+  const uq = await pool.query(
+    `select coalesce(nombre, split_part(email,'@',1)) as nombre,
+            email, telefono
+       from public.auth_local_usuario
+      where id = $1::uuid
+      limit 1`,
+    [userId]
+  );
+  const nombre = uq.rows?.[0]?.nombre || "cliente";
+  const email = uq.rows?.[0]?.email || null;
+  const telefono = uq.rows?.[0]?.telefono || null;
+
+  const ins = await pool.query(
+    `insert into public.cliente (nombre, telefono, email, activo, usuario_id, uid_local)
+     values ($1,$2,$3,true,$4,null)
+     returning id, nombre, telefono, email`,
+    [nombre, telefono, email, userId]
+  );
+  return ins.rows[0];
+}
+
+export async function GET(req: Request) {
+  // lee cookie de sesion
+  const cookieUid = readCookie(req.headers, "usuario_id");
+  // si viene header y es "undefined", ignoralo
+  const hdrUidRaw = (req.headers.get("x-usuario-id") || "").trim();
+  const hdrUid = hdrUidRaw && hdrUidRaw !== "undefined" ? hdrUidRaw : null;
+
+  // 1) usuario autenticado por cookie/header valido
+  const userId = isUuid(cookieUid) ? cookieUid : isUuid(hdrUid) ? hdrUid : null;
+
+  if (userId) {
+    try {
+      const u = await pool.query(
+        `select id, email, coalesce(nombre, split_part(email,'@',1)) as nombre, telefono
+           from public.auth_local_usuario
+          where id = $1::uuid
           limit 1`,
-        [adminId]
+        [userId]
       );
-      const nombre = qa.rowCount ? (qa.rows[0].nombre || "Administrador") : "Administrador";
-      return NextResponse.json({ ok: true, user: { id: adminId, nombre, rol: "admin" as const } });
+
+      if (!u.rowCount) {
+        // cookie invalida -> limpia y vuelve anon
+        const res = NextResponse.json({ ok: true, auth: false });
+        res.cookies.set("usuario_id", "", { path: "/", maxAge: 0, sameSite: "lax" });
+        // asegura uid_local
+        let anon = wantAnonUid(req.headers);
+        if (!anon) {
+          anon = crypto.randomUUID();
+          res.cookies.set("uid_local", anon, {
+            path: "/", httpOnly: false, sameSite: "lax", maxAge: 60 * 60 * 24 * 30
+          });
+        }
+        return res;
+      }
+
+      const user = u.rows[0];
+      const cliente = await getOrCreateClienteParaUsuario(userId);
+
+      const res = NextResponse.json({
+        ok: true,
+        auth: true,
+        user,
+        cliente,
+        displayName: cliente?.nombre || user?.nombre
+      });
+
+      // normaliza cookie usuario_id (evita "undefined")
+      res.cookies.set("usuario_id", String(userId), {
+        path: "/", httpOnly: false, sameSite: "lax", maxAge: 60 * 60 * 24 * 7
+      });
+      return res;
+    } catch (e) {
+      console.error(e);
+      const res = NextResponse.json({ ok: false, auth: false, msg: "error_interno" }, { status: 500 });
+      return res;
     }
-
-    if (userId) {
-      // 1) intenta en public.usuario
-      const q1 = await client.query(
-        `select u.nombre as nombre, coalesce(r.nombre, 'cliente') as rol
-           from public.usuario u
-           left join public.rol r on r.id = u.rol_id
-          where u.id = $1
-          limit 1`,
-        [userId]
-      );
-      if (q1.rowCount) {
-        const rolNombre: string = (q1.rows[0].rol || "cliente").toString().toLowerCase();
-        const isAdmin = rolNombre.includes("admin");
-        const nombre = q1.rows[0].nombre || (isAdmin ? "Administrador" : "Cliente");
-        return NextResponse.json({ ok: true, user: { id: userId, nombre, rol: isAdmin ? "admin" : "cliente" } });
-      }
-
-      // 2) cliente.nombre (cuando usuario_id apunta a auth_local_usuario)
-      const q2 = await client.query(
-        `select nombre from public.cliente where usuario_id = $1 limit 1`,
-        [userId]
-      );
-      if (q2.rowCount) {
-        const nombre = q2.rows[0].nombre || "Cliente";
-        return NextResponse.json({ ok: true, user: { id: userId, nombre, rol: "cliente" as const } });
-      }
-
-      // 3) auth_local_usuario como último recurso (usa nombre o el alias del email)
-      const q3 = await client.query(
-        `select nombre, email from public.auth_local_usuario where id = $1 limit 1`,
-        [userId]
-      );
-      if (q3.rowCount) {
-        const nombre = q3.rows[0].nombre || (q3.rows[0].email ? String(q3.rows[0].email).split("@")[0] : "Cliente");
-        return NextResponse.json({ ok: true, user: { id: userId, nombre, rol: "cliente" as const } });
-      }
-
-      return NextResponse.json({ ok: true, user: { id: userId, nombre: "Cliente", rol: "cliente" as const } });
-    }
-
-    return NextResponse.json({ ok: true, user: null });
-  } catch (e) {
-    console.error(e);
-    return NextResponse.json({ ok: false, user: null });
-  } finally {
-    client.release();
   }
+
+  // 2) sesion anonima (sin castear a uuid)
+  const payload = { ok: true, auth: false } as const;
+  const res = NextResponse.json(payload);
+  let anon = wantAnonUid(req.headers);
+  if (!anon) {
+    anon = crypto.randomUUID();
+    res.cookies.set("uid_local", anon, {
+      path: "/", httpOnly: false, sameSite: "lax", maxAge: 60 * 60 * 24 * 30
+    });
+  }
+  // limpia cualquier basura previa
+  res.cookies.set("usuario_id", "", { path: "/", maxAge: 0, sameSite: "lax" });
+  return res;
 }

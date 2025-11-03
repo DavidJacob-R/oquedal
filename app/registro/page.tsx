@@ -6,7 +6,7 @@ function normalizeEmail(e: string) { return (e || "").trim().toLowerCase().repla
 const emailRegex = /^[^\s@]+@[^\s@]{2,}\.[^\s@]{2,}$/;
 
 export default function RegistroPage() {
-  const searchParams = useSearchParams(); 
+  const searchParams = useSearchParams();
   const next = useMemo(() => {
     const n = searchParams?.get("next") || "/cliente/pedidos";
     return n.startsWith("/") ? n : "/cliente/pedidos";
@@ -20,6 +20,17 @@ export default function RegistroPage() {
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
 
+  async function postJSON(url: string, body: any) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+      cache: "no-store",
+    });
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok, data };
+  }
+
   const registrar = async (e: React.FormEvent) => {
     e.preventDefault();
     setErr("");
@@ -31,23 +42,45 @@ export default function RegistroPage() {
     if (pass !== pass2) return setErr("Las contraseñas no coinciden");
 
     setLoading(true);
-    const res = await fetch("/api/auth/local/register", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ nombre, email: em, telefono: tel, password: pass }),
-    });
-    setLoading(false);
 
-    const j = await res.json().catch(() => ({}));
-    if (!res.ok) return setErr(j?.error || "No se pudo registrar");
+    // 1) intenta /api/register; si no existe, usa /api/auth/local/register
+    const payload = { nombre, email: em, telefono: tel, password: pass };
+    let resp = await postJSON("/api/register", payload);
+    if (!resp.ok) {
+      resp = await postJSON("/api/auth/local/register", payload);
+    }
+    if (!resp.ok) {
+      setLoading(false);
+      return setErr(resp.data?.msg || resp.data?.error || "No se pudo registrar");
+    }
 
-    // guarda sesión local
+    // 2) toma el user_id sin importar la forma que devuelva tu API
+    const d = resp.data || {};
+    const userId =
+      d.user_id || d.user?.id || d.id || d.uid || d.usuario_id || null;
+
+    if (!userId) {
+      setLoading(false);
+      return setErr("Registro incompleto: falta user_id");
+    }
+
+    // 3) setea cookie de sesion (y limpia cualquier admin)
     try {
-      localStorage.setItem("usuario_id", j.user_id);
-      document.cookie = `usuario_id=${j.user_id}; path=/; max-age=31536000; samesite=lax`;
+      document.cookie = `usuario_id=${encodeURIComponent(String(userId))}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+      document.cookie = `admin_id=; Path=/; Max-Age=0; SameSite=Lax`;
+      // opcional: guardar local
+      try { localStorage.setItem("usuario_id", String(userId)); } catch {}
     } catch {}
 
-    window.location.href = next;
+    // 4) “calienta” whoami para que el backend cree/ligue el cliente y nombre
+    try {
+      await fetch("/api/whoami", { cache: "no-store" });
+    } catch {}
+
+    setLoading(false);
+
+    // 5) hard navigation para que el primer render ya llegue logeado
+    window.location.assign(next);
   };
 
   return (

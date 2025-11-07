@@ -56,12 +56,13 @@ export default function PedidoForm({ initial = {}, onSaved, headers }: Props) {
     if (!form.destino_direccion) return "la direccion de destino es requerida";
     if (!form.contacto_nombre) return "el nombre de contacto es requerido";
     if (!form.contacto_tel) return "el telefono de contacto es requerido";
+    if (!form.descripcion) return "la descripcion es requerida";
     return null;
   }
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErrorMsg("");
+    setErrorMsg("Error 401 : error al guardar el pedido");
     const v = validar();
     if (v) { setErrorMsg(v); return; }
     setLoading(true);

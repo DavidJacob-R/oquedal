@@ -1,18 +1,33 @@
-import type { NextRequest } from "next/server";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
-// Protege /admin/**. Si no hay admin_id -> redirige a /login
-export function middleware(request: NextRequest) {
-  const adminId = request.cookies.get("admin_id")?.value;
-  if (!adminId && request.nextUrl.pathname.startsWith("/admin")) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/login";
-    url.search = "";
-    return NextResponse.redirect(url);
+export function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl;
+  const rol = req.cookies.get("rol")?.value || "";
+
+  // Protege modulo del repartidor
+  if (pathname.startsWith("/repartidor") || pathname.startsWith("/api/repartidor")) {
+    if (rol !== "repartidor") {
+      const url = new URL("/login", req.url);
+      url.searchParams.set("next", pathname);
+      return NextResponse.redirect(url);
+    }
   }
+
+  // Un repartidor no puede navegar admin/cliente
+  if (rol === "repartidor") {
+    if (pathname.startsWith("/admin") || pathname.startsWith("/cliente")) {
+      return NextResponse.redirect(new URL("/repartidor", req.url));
+    }
+  }
+
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/admin/:path*"],
+  matcher: [
+    "/repartidor/:path*",
+    "/api/repartidor/:path*",
+    "/admin/:path*",
+    "/cliente/:path*",
+  ],
 };

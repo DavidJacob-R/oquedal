@@ -18,33 +18,20 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const id = String(params?.id || "");
     if (!UUID_RE.test(id)) return NextResponse.json({ ok: false, msg: "id_invalido" }, { status: 400 });
 
-    const b = await req.json().catch(() => ({}));
-    const estado = String(b?.estado || "").toLowerCase(); // 'completo' | 'incompleto'
-    if (estado !== "completo" && estado !== "incompleto") {
-      return NextResponse.json({ ok: false, msg: "estado_invalido" }, { status: 400 });
-    }
-    const motivo = b?.motivo ? String(b?.motivo).slice(0,200) : null;
-    const nota = b?.nota ? String(b?.nota).slice(0,500) : null;
-
-    // Debe estar confirmado, pendiente y ASIGNADO a este repartidor
-    const q0 = await pool.query(
-      `select 1 from public.pedido
+    const up = await pool.query(
+      `update public.pedido
+          set asignado_a = null
         where id = $1::uuid
           and estado = 'confirmado'
           and estado_entrega = 'pendiente'
           and asignado_a = $2::uuid
-        limit 1`,
+        returning id`,
       [id, repId]
     );
-    if (!q0.rowCount) return NextResponse.json({ ok: false, msg: "no_asignado_a_ti" }, { status: 400 });
 
-    await pool.query(
-      `insert into public.pedido_entrega (pedido_id, repartidor_id, estado, motivo, nota)
-       values ($1::uuid, $2::uuid, $3, $4, $5)`,
-      [id, repId, estado, motivo, nota]
-    );
+    if (up.rowCount === 1) return NextResponse.json({ ok: true });
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: false, msg: "no_asignado_a_ti" }, { status: 400 });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ ok: false, msg: "error_interno" }, { status: 500 });

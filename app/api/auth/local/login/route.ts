@@ -27,7 +27,7 @@ export async function POST(req: Request) {
 
   const client = await pool.connect();
   try {
-    // 1) intentar admin en public.usuario
+    // 1) public.usuario (admin o repartidor)
     const qa = await client.query(
       `select u.id, u.nombre, u.pass_hash, r.nombre as rol, u.activo
          from public.usuario u
@@ -38,22 +38,54 @@ export async function POST(req: Request) {
     );
 
     if (qa.rowCount) {
-      const row = qa.rows[0];
+      const row = qa.rows[0] as { id: string; nombre: string | null; pass_hash: string | null; rol: string; activo: boolean | null };
       const okPass = await comparePassword(password, row.pass_hash);
       if (okPass && (row.activo ?? true)) {
+        if (row.rol === "admin") {
+          const res = NextResponse.json({
+            ok: true,
+            user: { id: row.id, nombre: row.nombre || "Administrador", rol: "admin" as const },
+            redirect: "/admin/panel",
+          });
+          // cookies estilo actual
+          res.cookies.set("admin_id", row.id, { path: "/", httpOnly: false, sameSite: "lax", maxAge: 60 * 60 * 24 * 7 });
+          // limpiar otras
+          res.cookies.set("usuario_id", "", { path: "/", maxAge: 0, sameSite: "lax" });
+          res.cookies.set("repartidor_id", "", { path: "/", maxAge: 0, sameSite: "lax" });
+          // (si antes creamos 'rol', limpiarla por si existe)
+          res.cookies.set("rol", "", { path: "/", maxAge: 0, sameSite: "lax" });
+          return res;
+        }
+
+        if (row.rol === "repartidor") {
+          const res = NextResponse.json({
+            ok: true,
+            user: { id: row.id, nombre: row.nombre || "Repartidor", rol: "repartidor" as const },
+            redirect: "/repartidor",
+          });
+          res.cookies.set("repartidor_id", row.id, { path: "/", httpOnly: false, sameSite: "lax", maxAge: 60 * 60 * 24 * 7 });
+          // limpiar otras
+          res.cookies.set("usuario_id", "", { path: "/", maxAge: 0, sameSite: "lax" });
+          res.cookies.set("admin_id", "", { path: "/", maxAge: 0, sameSite: "lax" });
+          res.cookies.set("rol", "", { path: "/", maxAge: 0, sameSite: "lax" });
+          return res;
+        }
+
+        // Si existe otro rol en public.usuario, por seguridad reusa admin flow (ajusta si tuvieras más)
         const res = NextResponse.json({
           ok: true,
-          user: { id: row.id, nombre: row.nombre || "Administrador", rol: "admin" as const },
+          user: { id: row.id, nombre: row.nombre || "Usuario", rol: row.rol as any },
           redirect: "/admin/panel",
         });
         res.cookies.set("admin_id", row.id, { path: "/", httpOnly: false, sameSite: "lax", maxAge: 60 * 60 * 24 * 7 });
-        // limpiar posible cookie de cliente
         res.cookies.set("usuario_id", "", { path: "/", maxAge: 0, sameSite: "lax" });
+        res.cookies.set("repartidor_id", "", { path: "/", maxAge: 0, sameSite: "lax" });
+        res.cookies.set("rol", "", { path: "/", maxAge: 0, sameSite: "lax" });
         return res;
       }
     }
 
-    // 2) cliente en auth_local_usuario (y posible nombre en cliente)
+    // 2) Cliente en auth_local_usuario (+ nombre de cliente si existe)
     const qc = await client.query(
       `select a.id, a.password_hash, coalesce(c.nombre, a.nombre) as nombre
          from public.auth_local_usuario a
@@ -64,7 +96,7 @@ export async function POST(req: Request) {
     );
 
     if (qc.rowCount) {
-      const row = qc.rows[0];
+      const row = qc.rows[0] as { id: string; password_hash: string | null; nombre: string | null };
       const okPass = await comparePassword(password, row.password_hash);
       if (okPass) {
         const res = NextResponse.json({
@@ -73,8 +105,10 @@ export async function POST(req: Request) {
           redirect: "/cliente/pedidos",
         });
         res.cookies.set("usuario_id", row.id, { path: "/", httpOnly: false, sameSite: "lax", maxAge: 60 * 60 * 24 * 7 });
-        // limpiar posible cookie de admin
+        // limpiar otras
         res.cookies.set("admin_id", "", { path: "/", maxAge: 0, sameSite: "lax" });
+        res.cookies.set("repartidor_id", "", { path: "/", maxAge: 0, sameSite: "lax" });
+        res.cookies.set("rol", "", { path: "/", maxAge: 0, sameSite: "lax" });
         return res;
       }
     }

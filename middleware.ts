@@ -2,32 +2,29 @@ import { NextRequest, NextResponse } from "next/server";
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  const rol = req.cookies.get("rol")?.value || "";
+  const admin = req.cookies.get("admin_id")?.value;
+  const cliente = req.cookies.get("usuario_id")?.value;
+  const repartidor = req.cookies.get("repartidor_id")?.value;
 
-  // Protege modulo del repartidor
+  if (pathname.startsWith("/admin") || pathname.startsWith("/api/admin")) {
+    if (!admin) return NextResponse.redirect(new URL("/login", req.url));
+  }
+  if (pathname.startsWith("/cliente") || pathname.startsWith("/api/cliente")) {
+    if (!cliente) return NextResponse.redirect(new URL("/login", req.url));
+  }
   if (pathname.startsWith("/repartidor") || pathname.startsWith("/api/repartidor")) {
-    if (rol !== "repartidor") {
-      const url = new URL("/login", req.url);
-      url.searchParams.set("next", pathname);
-      return NextResponse.redirect(url);
-    }
+    if (!repartidor) return NextResponse.redirect(new URL("/login", req.url));
   }
-
-  // Un repartidor no puede navegar admin/cliente
-  if (rol === "repartidor") {
-    if (pathname.startsWith("/admin") || pathname.startsWith("/cliente")) {
-      return NextResponse.redirect(new URL("/repartidor", req.url));
-    }
-  }
-
   return NextResponse.next();
 }
 
 export const config = {
   matcher: [
+    "/admin/:path*",
+    "/api/admin/:path*",
+    "/cliente/:path*",
+    "/api/cliente/:path*",
     "/repartidor/:path*",
     "/api/repartidor/:path*",
-    "/admin/:path*",
-    "/cliente/:path*",
   ],
 };

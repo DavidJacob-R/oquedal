@@ -11,20 +11,11 @@ function getCookie(headers: Headers, name: string): string | null {
 
 export async function GET(req: Request) {
   try {
-    const repId = getCookie(req.headers, "repartidor_id");
-    if (!repId) return NextResponse.json({ ok: false, msg: "solo_repartidor" }, { status: 403 });
+    const adminId = getCookie(req.headers, "admin_id");
+    if (!adminId) return NextResponse.json({ ok: false, msg: "solo_admin" }, { status: 403 });
 
-    const url = new URL(req.url);
-    const scope = (url.searchParams.get("scope") || "todos").toLowerCase(); // 'todos' | 'mios' | 'disponibles'
-
-    let whereExtra = "";
-    if (scope === "mios") {
-      whereExtra = "and p.asignado_a = $1::uuid";
-    } else if (scope === "disponibles") {
-      whereExtra = "and p.asignado_a is null";
-    }
-
-    const sql = `
+    const q = await pool.query(
+      `
       select
         p.id::text as id,
         p.folio,
@@ -34,16 +25,17 @@ export async function GET(req: Request) {
         p.origen_direccion, p.origen_ciudad, p.origen_estado, p.origen_cp,
         p.destino_direccion, p.destino_ciudad, p.destino_estado, p.destino_cp,
         p.contacto_nombre, p.contacto_tel,
-        (p.asignado_a = $1::uuid) as asignado_mio,
-        (p.asignado_a is not null) as asignado
+        u.id::text as repartidor_id,
+        u.nombre as repartidor_nombre,
+        u.email as repartidor_email
       from public.pedido p
+      left join public.usuario u on u.id = p.asignado_a
       where p.estado = 'confirmado'
         and p.estado_entrega = 'pendiente'
-        ${whereExtra}
       order by p.fecha asc nulls last, p.id asc
-    `;
+      `
+    );
 
-    const q = await pool.query(sql, [repId]);
     return NextResponse.json({ ok: true, rows: q.rows });
   } catch (e) {
     console.error(e);

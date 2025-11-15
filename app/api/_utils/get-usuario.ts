@@ -24,4 +24,7 @@ export async function getUsuarioIdFromRequest(req: Request): Promise<string> {
   if (fromCookie?.trim()) return decodeURIComponent(fromCookie.trim());
 
   throw new Error("sesión requerida");
+
+  // 4 No encontrado 
+  
 }

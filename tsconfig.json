@@ -34,7 +34,7 @@
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts"
-  ],
+, "app/admin/asignaciones"  ],
   "exclude": [
     "node_modules"
   ]

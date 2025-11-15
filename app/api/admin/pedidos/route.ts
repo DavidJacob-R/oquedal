@@ -70,6 +70,7 @@ export async function GET(req: NextRequest) {
       ORDER BY p.folio ASC NULLS LAST, p.created_at ASC NULLS LAST
       LIMIT $${i} OFFSET $${i+1}
     `;
+    // Son los datos para el LIMIT y OFFSET
     vals.push(limit, offset);
 
     const data = await pool.query(sql, vals);

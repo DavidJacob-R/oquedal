@@ -6,6 +6,7 @@ type Pedido = {
   folio: number | null;
   folio_str: string | null;
   fecha: string | null;
+  estado: string;
   estado_entrega: "pendiente" | "completo" | "incompleto";
   origen_direccion: string | null; origen_ciudad: string | null; origen_estado: string | null; origen_cp: string | null;
   destino_direccion: string | null; destino_ciudad: string | null; destino_estado: string | null; destino_cp: string | null;
@@ -38,13 +39,12 @@ export default function AdminEntregasPage() {
   useEffect(()=>{ cargar(); }, []);
 
   function addr(p: Pedido, kind: "origen"|"destino") {
-    const d = [
+    return [
       (p as any)[`${kind}_direccion`],
       (p as any)[`${kind}_ciudad`],
       (p as any)[`${kind}_estado`],
       (p as any)[`${kind}_cp`],
-    ].filter(Boolean).join(", ");
-    return d || "-";
+    ].filter(Boolean).join(", ") || "-";
   }
 
   function Section({title, items}:{title:string; items:Pedido[]}) {
@@ -86,7 +86,7 @@ export default function AdminEntregasPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-6">
+    <div className="max-w-6xl mx-auto">
       <h1 className="text-2xl font-bold text-zinc-100 mb-4">Entregas</h1>
       {loading && <p className="text-sm text-zinc-400">Cargando...</p>}
       {err && <p className="text-sm text-red-400">{err}</p>}

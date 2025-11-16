@@ -25,7 +25,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   return (
     <div className="min-h-[100dvh] bg-neutral-950 text-neutral-100">
       <AdminTopbar onMenuClick={toggleSidebar} onCollapseClick={toggleCollapsed} collapsed={collapsed} />
-      <AdminSidebar open={sidebarOpen} collapsed={collapsed} onClose={closeSidebar} />
+      <AdminSidebar collapsed={collapsed} />
       <main
         className={[
           "pt-[var(--header-h)]",

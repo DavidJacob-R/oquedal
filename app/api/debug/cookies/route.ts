@@ -1,10 +1,6 @@
 // app/api/debug/cookies/route.ts
 import { NextResponse } from "next/server";
 
-/**
- * Endpoint de depuración: devuelve las cookies que el servidor recibe.
- * Visita: http://localhost:3000/api/debug/cookies
- */
 export async function GET(req: Request) {
   try {
     const cookieHeader = (req.headers && req.headers.get("cookie")) || "";

@@ -1,123 +1,100 @@
+// app/api/auth/local/login/route.ts
+import { NextResponse } from "next/server";
+import { query } from "@/lib/db";
+import { verifyPassword, cookieOpts } from "@/lib/auth";
+
+type Body = { email: string; password: string };
+
 export const dynamic = "force-dynamic";
 
-import { NextResponse } from "next/server";
-import { pool } from "@/lib/db";
+function normalizeRole(raw: string | null | undefined): "admin" | "repartidor" | "cliente" | "other" {
+  const s = (raw ?? "").toLowerCase().trim();
+  if (!s) return "other";
+  if (s.includes("admin")) return "admin";                 // admin, administrador, superadmin...
+  if (s.includes("repartidor") || s.includes("conductor")) return "repartidor"; // conductor ≡ repartidor
+  if (s.includes("cliente")) return "cliente";
+  return s as any;
+}
 
-async function comparePassword(input: string, stored: string | null): Promise<boolean> {
-  if (!stored) return false;
-  const s = String(stored);
-  if (s.startsWith("$2a$") || s.startsWith("$2b$") || s.startsWith("$2y$")) {
-    try {
-      const bcrypt = await import("bcryptjs");
-      return await bcrypt.compare(input, s);
-    } catch {
-      return input === s;
-    }
+function clearAll(res: NextResponse) {
+  const base = cookieOpts();
+  const dead = { ...base, maxAge: 0, expires: new Date(0) };
+  for (const k of ["admin_id", "usuario_id", "repartidor_id", "auth_token", "oquedal_token"]) {
+    res.cookies.set(k, "", dead);
   }
-  return input === s;
 }
 
 export async function POST(req: Request) {
-  const body = await req.json().catch(() => null);
-  const email = body?.email?.toString().trim().toLowerCase();
-  const password = body?.password?.toString() ?? "";
-  if (!email || !password) {
-    return NextResponse.json({ ok: false, msg: "datos invalidos" }, { status: 400 });
-  }
-
-  const client = await pool.connect();
   try {
-    // 1) public.usuario (admin o repartidor)
-    const qa = await client.query(
-      `select u.id, u.nombre, u.pass_hash, r.nombre as rol, u.activo
-         from public.usuario u
-         join public.rol r on r.id = u.rol_id
-        where lower(u.email) = $1
-        limit 1`,
-      [email]
+    const { email, password } = (await req.json()) as Body;
+    const em = (email || "").trim();
+    const pw = (password || "").trim();
+    if (!em || !pw) return NextResponse.json({ ok: false, error: "Email y password requeridos" }, { status: 400 });
+
+    // 1) Buscar en USUARIO (roles del sistema)
+    const ures = await query(
+      `SELECT u.id, u.pass_hash, u.activo, LOWER(r.nombre) AS rol, u.nombre
+       FROM public.usuario u
+       JOIN public.rol r ON r.id = u.rol_id
+       WHERE LOWER(u.email) = LOWER($1)
+       LIMIT 1`,
+      [em]
     );
 
-    if (qa.rowCount) {
-      const row = qa.rows[0] as { id: string; nombre: string | null; pass_hash: string | null; rol: string; activo: boolean | null };
-      const okPass = await comparePassword(password, row.pass_hash);
-      if (okPass && (row.activo ?? true)) {
-        if (row.rol === "admin") {
-          const res = NextResponse.json({
-            ok: true,
-            user: { id: row.id, nombre: row.nombre || "Administrador", rol: "admin" as const },
-            redirect: "/admin/panel",
-          });
-          // cookies estilo actual
-          res.cookies.set("admin_id", row.id, { path: "/", httpOnly: false, sameSite: "lax", maxAge: 60 * 60 * 24 * 7 });
-          // limpiar otras
-          res.cookies.set("usuario_id", "", { path: "/", maxAge: 0, sameSite: "lax" });
-          res.cookies.set("repartidor_id", "", { path: "/", maxAge: 0, sameSite: "lax" });
-          // (si antes creamos 'rol', limpiarla por si existe)
-          res.cookies.set("rol", "", { path: "/", maxAge: 0, sameSite: "lax" });
-          return res;
-        }
+    if ((ures.rows?.length ?? 0) > 0) {
+      const u = ures.rows[0] as { id: string; pass_hash: string; activo: boolean; rol: string; nombre: string | null };
+      if (!u.activo) return NextResponse.json({ ok: false, error: "Usuario inactivo" }, { status: 403 });
 
-        if (row.rol === "repartidor") {
-          const res = NextResponse.json({
-            ok: true,
-            user: { id: row.id, nombre: row.nombre || "Repartidor", rol: "repartidor" as const },
-            redirect: "/repartidor",
-          });
-          res.cookies.set("repartidor_id", row.id, { path: "/", httpOnly: false, sameSite: "lax", maxAge: 60 * 60 * 24 * 7 });
-          // limpiar otras
-          res.cookies.set("usuario_id", "", { path: "/", maxAge: 0, sameSite: "lax" });
-          res.cookies.set("admin_id", "", { path: "/", maxAge: 0, sameSite: "lax" });
-          res.cookies.set("rol", "", { path: "/", maxAge: 0, sameSite: "lax" });
-          return res;
-        }
+      const okPass = await verifyPassword(pw, u.pass_hash);
+      if (!okPass) return NextResponse.json({ ok: false, error: "Credenciales inválidas" }, { status: 401 });
 
-        // Si existe otro rol en public.usuario, por seguridad reusa admin flow (ajusta si tuvieras más)
-        const res = NextResponse.json({
-          ok: true,
-          user: { id: row.id, nombre: row.nombre || "Usuario", rol: row.rol as any },
-          redirect: "/admin/panel",
-        });
-        res.cookies.set("admin_id", row.id, { path: "/", httpOnly: false, sameSite: "lax", maxAge: 60 * 60 * 24 * 7 });
-        res.cookies.set("usuario_id", "", { path: "/", maxAge: 0, sameSite: "lax" });
-        res.cookies.set("repartidor_id", "", { path: "/", maxAge: 0, sameSite: "lax" });
-        res.cookies.set("rol", "", { path: "/", maxAge: 0, sameSite: "lax" });
-        return res;
+      const norm = normalizeRole(u.rol);
+
+      // Si es repartidor, exigir registro activo en CONDUCTOR
+      if (norm === "repartidor") {
+        const c = await query(`SELECT 1 FROM public.conductor WHERE usuario_id = $1 AND activo = true LIMIT 1`, [u.id]);
+        if ((c.rows?.length ?? 0) === 0) {
+          return NextResponse.json({ ok: false, error: "Repartidor sin registro/activo en 'conductor'" }, { status: 403 });
+        }
       }
+
+      const res = NextResponse.json({ ok: true, user: { id: u.id, rol: norm, nombre: u.nombre ?? null } });
+
+      // Limpiar TODO y poner cookie del rol correcto
+      clearAll(res);
+      if (norm === "admin") {
+        res.cookies.set("admin_id", u.id, cookieOpts());
+      } else if (norm === "repartidor") {
+        res.cookies.set("repartidor_id", u.id, cookieOpts());
+      } else if (norm === "cliente") {
+        // (poco común que esté en usuario con rol cliente; igual soportado)
+        res.cookies.set("usuario_id", u.id, cookieOpts());
+      } else {
+        // otros roles internos -> token neutral (no protegido por tu middleware)
+        res.cookies.set("oquedal_token", `u:${u.id}:${u.rol}`, cookieOpts());
+      }
+
+      return res;
     }
 
-    // 2) Cliente en auth_local_usuario (+ nombre de cliente si existe)
-    const qc = await client.query(
-      `select a.id, a.password_hash, coalesce(c.nombre, a.nombre) as nombre
-         from public.auth_local_usuario a
-         left join public.cliente c on c.usuario_id = a.id
-        where lower(a.email) = $1
-        limit 1`,
-      [email]
+    // 2) Si NO existe en usuario, intentar login de CLIENTE (auth_local_usuario)
+    const cres = await query(
+      `SELECT id, password_hash, nombre FROM public.auth_local_usuario WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+      [em]
     );
+    if ((cres.rows?.length ?? 0) > 0) {
+      const c = cres.rows[0] as { id: string; password_hash: string; nombre: string | null };
+      const ok = await verifyPassword(pw, c.password_hash);
+      if (!ok) return NextResponse.json({ ok: false, error: "Credenciales inválidas" }, { status: 401 });
 
-    if (qc.rowCount) {
-      const row = qc.rows[0] as { id: string; password_hash: string | null; nombre: string | null };
-      const okPass = await comparePassword(password, row.password_hash);
-      if (okPass) {
-        const res = NextResponse.json({
-          ok: true,
-          user: { id: row.id, nombre: row.nombre || "Cliente", rol: "cliente" as const },
-          redirect: "/cliente/pedidos",
-        });
-        res.cookies.set("usuario_id", row.id, { path: "/", httpOnly: false, sameSite: "lax", maxAge: 60 * 60 * 24 * 7 });
-        // limpiar otras
-        res.cookies.set("admin_id", "", { path: "/", maxAge: 0, sameSite: "lax" });
-        res.cookies.set("repartidor_id", "", { path: "/", maxAge: 0, sameSite: "lax" });
-        res.cookies.set("rol", "", { path: "/", maxAge: 0, sameSite: "lax" });
-        return res;
-      }
+      const res = NextResponse.json({ ok: true, user: { id: c.id, rol: "cliente", nombre: c.nombre ?? null } });
+      clearAll(res);
+      res.cookies.set("usuario_id", c.id, cookieOpts());
+      return res;
     }
 
-    return NextResponse.json({ ok: false, msg: "credenciales invalidas" }, { status: 401 });
-  } catch (e) {
-    console.error(e);
-    return NextResponse.json({ ok: false, msg: "error interno" }, { status: 500 });
-  } finally {
-    client.release();
+    return NextResponse.json({ ok: false, error: "Usuario no encontrado" }, { status: 404 });
+  } catch (e: any) {
+    return NextResponse.json({ ok: false, error: String(e?.message || e) }, { status: 500 });
   }
 }

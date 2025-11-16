@@ -1,58 +1,33 @@
+// components/shared/Navbar.tsx
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-type WhoAmI =
+type Who =
   | { ok: true; user: null }
-  | { ok: true; user: { id: string; nombre: string; rol: "admin" | "cliente" } }
+  | { ok: true; user: { id: string; nombre: string | null; rol: "admin" | "cliente" | "repartidor" } }
   | { ok: false; user: null };
 
 export default function Navbar() {
-  const [uid, setUid] = useState<string | null>(null);
-  const [adminId, setAdminId] = useState<string | null>(null);
-  const [nombre, setNombre] = useState<string | null>(null);
-  const [rol, setRol] = useState<"admin" | "cliente" | null>(null);
+  const [who, setWho] = useState<Who>({ ok: true, user: null });
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    try { setUid(localStorage.getItem("usuario_id")); } catch {}
-    try { setAdminId(localStorage.getItem("admin_id")); } catch {}
-
     (async () => {
       try {
         const r = await fetch("/api/whoami", { cache: "no-store" });
-        const j: WhoAmI = await r.json();
-        if (j.ok && j.user) {
-          setNombre(j.user.nombre || null);
-          setRol(j.user.rol);
-        } else {
-          setNombre(null);
-          setRol(null);
-        }
+        const j = (await r.json()) as Who;
+        setWho(j);
       } catch {
-        setNombre(null);
-        setRol(null);
+        setWho({ ok: true, user: null });
+      } finally {
+        setLoading(false);
       }
     })();
   }, []);
 
-  const cerrarCliente = () => {
-    try {
-      localStorage.removeItem("usuario_id");
-      document.cookie = "usuario_id=; path=/; max-age=0; samesite=lax";
-    } catch {}
-    window.location.href = "/";
-  };
-
-  const cerrarAdmin = () => {
-    try {
-      localStorage.removeItem("admin_id");
-      document.cookie = "admin_id=; path=/; max-age=0; samesite=lax";
-    } catch {}
-    window.location.href = "/login";
-  };
-
-  const isAdmin = !!adminId || rol === "admin";
-  const isCliente = (!!uid || rol === "cliente") && !isAdmin;
+  const user = who.ok ? who.user : null;
+  const rol = user?.rol ?? null;
 
   return (
     <header className="sticky top-0 z-50 border-b border-zinc-800/80 bg-[#0b0b10]/80 backdrop-blur-lg">
@@ -70,7 +45,7 @@ export default function Navbar() {
             Inicio
           </Link>
 
-          {isCliente && (
+          {rol === "cliente" && (
             <>
               <Link
                 href="/cliente/pedidos"
@@ -87,7 +62,7 @@ export default function Navbar() {
             </>
           )}
 
-          {isAdmin && (
+          {rol === "admin" && (
             <Link
               href="/admin/panel"
               className="hidden sm:inline-flex px-3 py-1.5 rounded-lg text-sm text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800/60"
@@ -96,13 +71,24 @@ export default function Navbar() {
             </Link>
           )}
 
-          {(isCliente || isAdmin) && (
+          {rol === "repartidor" && (
+            <Link
+              href="/repartidor/rutas"
+              className="hidden sm:inline-flex px-3 py-1.5 rounded-lg text-sm text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800/60"
+            >
+              Mis rutas
+            </Link>
+          )}
+
+          {rol && (
             <span className="hidden sm:inline-flex px-3 py-1.5 rounded-lg text-sm border border-zinc-800/60 bg-zinc-900/50 text-zinc-200">
-              {isAdmin ? `Administrador: ${nombre ?? "Admin"}` : (nombre ?? "Cliente")}
+              {rol === "admin" ? `Administrador: ${user?.nombre ?? "Admin"}` :
+               rol === "repartidor" ? `Repartidor: ${user?.nombre ?? "Repartidor"}` :
+               (user?.nombre ?? "Cliente")}
             </span>
           )}
 
-          {!isAdmin && !isCliente && (
+          {!rol && !loading && (
             <>
               <Link
                 href="/login"
@@ -119,22 +105,15 @@ export default function Navbar() {
             </>
           )}
 
-          {isCliente && (
-            <button
-              onClick={cerrarCliente}
-              className="px-3 py-1.5 rounded-lg text-sm text-white bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500"
-            >
-              Cerrar sesión
-            </button>
-          )}
-
-          {isAdmin && (
-            <button
-              onClick={cerrarAdmin}
+          {rol && (
+            // Usamos link directo a /logout para que el servidor borre cookies y redirija
+            <a
+              href="/logout"
               className="px-3 py-1.5 rounded-lg text-sm text-white bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-500 hover:to-teal-500"
+              title="Cerrar sesión"
             >
-              Salir admin
-            </button>
+              Salir
+            </a>
           )}
         </div>
       </nav>

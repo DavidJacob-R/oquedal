@@ -1,207 +1,248 @@
-import Link from "next/link";
-import { cookies } from "next/headers";
-import { query, tx } from "@/lib/db";
+// app/repartidor/rutas/page.tsx
+"use client";
 
-export const dynamic = "force-dynamic";
+import { useEffect, useState } from "react";
 
-/** Normaliza cualquier valor a 'YYYY-MM-DD' (UTC, sin hora) */
-function toYmd(v: unknown): string {
-  if (v instanceof Date) {
-    const d = new Date(Date.UTC(v.getUTCFullYear(), v.getUTCMonth(), v.getUTCDate()));
-    return d.toISOString().slice(0, 10);
-  }
-  const s = String(v ?? "").trim();
-  // Si ya viene como YYYY-MM-DD
-  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
-  // Último recurso: parsear y devolver YYYY-MM-DD
-  const d = new Date(s);
-  if (!isNaN(d.getTime())) {
-    const u = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-    return u.toISOString().slice(0, 10);
-  }
-  // Evita romper la query; regresa hoy
-  const today = new Date();
-  const u = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
-  return u.toISOString().slice(0, 10);
-}
+type ParadaUI = {
+  paradaId: string;
+  pedidoId: string;
+  folio: number;
+  cliente: string;
+  origen: string;
+  destino: string;
+  estado_parada: string;
+  estado_pedido: string;
+  estado_entrega: string;
+  created_at: string | null;
+};
 
-/**
- * Asegura que todo pedido asignado al repartidor tenga su ruta (por fecha del pedido)
- * y su parada_ruta. No duplica, solo rellena lo que falte.
- */
-async function ensureRepRoutes(repUserId: string) {
-  await tx(async (client) => {
-    // 1) Conductor
-    let conductorId: string;
-    const c0 = await client.query(
-      `SELECT id FROM public.conductor WHERE usuario_id = $1 LIMIT 1`,
-      [repUserId]
-    );
-    if (c0.rows?.length) {
-      conductorId = String(c0.rows[0].id);
-    } else {
-      const c1 = await client.query(
-        `INSERT INTO public.conductor (usuario_id, licencia, activo)
-         VALUES ($1, NULL, true)
-         RETURNING id`,
-        [repUserId]
-      );
-      conductorId = String(c1.rows[0].id);
+type ApiResp = {
+  ok: boolean;
+  activos?: ParadaUI[];
+  finalizados?: ParadaUI[];
+  error?: string;
+};
+
+export default function RepartidorRutasPage() {
+  const [activos, setActivos] = useState<ParadaUI[]>([]);
+  const [finalizados, setFinalizados] = useState<ParadaUI[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  async function cargar() {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/repartidor/paradas-hoy", {
+        cache: "no-store",
+      });
+      const data: ApiResp = await res.json();
+      if (!res.ok || !data.ok) {
+        console.error(data.error || "Error al cargar");
+        return;
+      }
+      setActivos(data.activos || []);
+      setFinalizados(data.finalizados || []);
+    } finally {
+      setLoading(false);
     }
+  }
 
-    // 2) Vehículo
-    let vehiculoId: string;
-    const v0 = await client.query(
-      `SELECT id FROM public.vehiculo WHERE activo = true ORDER BY capacidad_kg DESC NULLS LAST LIMIT 1`
-    );
-    if (v0.rows?.length) {
-      vehiculoId = String(v0.rows[0].id);
-    } else {
-      const placas = "TMP-" + Math.random().toString(36).slice(2, 8).toUpperCase();
-      const v1 = await client.query(
-        `INSERT INTO public.vehiculo (placas, capacidad_kg, capacidad_vol_m3, activo)
-         VALUES ($1, 1000, 10, true)
-         RETURNING id`,
-        [placas]
-      );
-      vehiculoId = String(v1.rows[0].id);
-    }
+  useEffect(() => {
+    cargar();
+  }, []);
 
-    // 3) Pedidos asignados sin parada
-    const pend = await client.query(
-      `SELECT p.id, p.fecha
-       FROM public.pedido p
-       WHERE p.asignado_a = $1
-         AND NOT EXISTS (SELECT 1 FROM public.parada_ruta pr WHERE pr.pedido_id = p.id)
-       ORDER BY p.created_at ASC`,
-      [repUserId]
-    );
+  async function finalizar(paradaId: string, pedidoId: string) {
+    if (!confirm("¿Marcar este pedido como FINALIZADO?")) return;
 
-    // 4) Crear/usar ruta por fecha del pedido y crear parada
-    for (const row of pend.rows || []) {
-      const pedidoId: string = String(row.id);
-      const fechaYmd: string = toYmd(row.fecha);
-
-      // Ruta del mismo día
-      let rutaId: string;
-      const r0 = await client.query(
-        `SELECT id FROM public.ruta
-         WHERE conductor_id = $1 AND fecha = $2::date
-         ORDER BY id LIMIT 1`,
-        [conductorId, fechaYmd]
-      );
-      if (r0.rows?.length) {
-        rutaId = String(r0.rows[0].id);
-      } else {
-        const r1 = await client.query(
-          `INSERT INTO public.ruta (fecha, vehiculo_id, conductor_id, estado)
-           VALUES ($1::date, $2, $3, 'planificada')
-           RETURNING id`,
-          [fechaYmd, vehiculoId, conductorId]
-        );
-        rutaId = String(r1.rows[0].id);
+    try {
+      const res = await fetch("/api/repartidor/pedidos/finalizar", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ paradaId, pedidoId }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.ok) {
+        alert(data?.error || "Error al finalizar");
+        return;
       }
 
-      // Evitar duplicado
-      const ex = await client.query(
-        `SELECT 1 FROM public.parada_ruta WHERE ruta_id = $1 AND pedido_id = $2 LIMIT 1`,
-        [rutaId, pedidoId]
-      );
-      if (!(ex.rows?.length)) {
-        const s0 = await client.query(
-          `SELECT COALESCE(MAX(secuencia), 0) + 1 AS next_seq
-           FROM public.parada_ruta
-           WHERE ruta_id = $1`,
-          [rutaId]
-        );
-        const nextSeq = Number(s0.rows?.[0]?.next_seq ?? 1);
-
-        await client.query(
-          `INSERT INTO public.parada_ruta (ruta_id, pedido_id, secuencia, estado)
-           VALUES ($1, $2, $3, 'pendiente')`,
-          [rutaId, pedidoId, nextSeq]
-        );
-      }
-
-      await client.query(
-        `UPDATE public.pedido SET estado = 'confirmado'
-         WHERE id = $1 AND estado <> 'confirmado'`,
-        [pedidoId]
-      );
+      setActivos((prev) => {
+        const remaining: ParadaUI[] = [];
+        let moved: ParadaUI | null = null;
+        for (const p of prev) {
+          if (p.paradaId === paradaId) {
+            moved = {
+              ...p,
+              estado_parada: "completado",
+              estado_pedido: "completado",
+              estado_entrega: "completo",
+            };
+          } else {
+            remaining.push(p);
+          }
+        }
+        if (moved) {
+          setFinalizados((old) => [moved!, ...old]);
+        }
+        return remaining;
+      });
+    } catch (e) {
+      console.error(e);
+      alert("Error de red al finalizar");
     }
-  });
-}
-
-export default async function RepartidorRutasPage() {
-  const repUserId = cookies().get("repartidor_id")?.value || null;
-  if (!repUserId) {
-    return (
-      <div className="mx-auto max-w-5xl p-6 rounded-xl border border-white/10 bg-neutral-950/40 text-neutral-300 text-sm">
-        No autorizado.
-      </div>
-    );
   }
 
-  // Auto-sync ANTES de listar
-  await ensureRepRoutes(repUserId);
-
-  // Listar rutas
-  const res = await query(
-    `SELECT r.id, r.fecha, r.estado,
-            COUNT(pr.id)::int AS total,
-            COUNT(pr.id) FILTER (WHERE pr.salida_real IS NOT NULL)::int AS done
-     FROM public.ruta r
-     JOIN public.conductor c ON c.id = r.conductor_id
-     LEFT JOIN public.parada_ruta pr ON pr.ruta_id = r.id
-     WHERE c.usuario_id = $1
-     GROUP BY r.id
-     ORDER BY r.fecha DESC, r.id`,
-    [repUserId]
-  );
-
-  const rutas = (res.rows || []).map((r: any) => ({
-    id: String(r.id),
-    fecha: String(r.fecha),
-    estado: String(r.estado),
-    total: Number(r.total),
-    done: Number(r.done),
-  }));
+  function abrirGoogle(origen: string, destino: string) {
+    const o = origen || "";
+    const d = destino || "";
+    if (!o && !d) return;
+    const url = `https://www.google.com/maps/dir/${encodeURIComponent(o)}/${encodeURIComponent(
+      d
+    )}`;
+    window.open(url, "_blank");
+  }
 
   return (
-    <div className="space-y-3">
-      <h1 className="text-lg font-semibold text-neutral-100">Mis rutas</h1>
+    <main className="min-h-screen bg-neutral-950 text-neutral-100">
+      <div className="mx-auto max-w-4xl px-3 py-4 space-y-4">
+        {/* Header */}
+        <header className="flex items-center justify-between gap-3">
+          <div>
+            <h1 className="text-lg font-semibold">Rutas de hoy</h1>
+            <p className="text-xs text-neutral-400">
+              Solo ves los pedidos del día actual. Al día siguiente, la lista se reinicia.
+            </p>
+          </div>
+          <button
+            onClick={cargar}
+            disabled={loading}
+            className="rounded-lg px-3 py-1.5 text-xs border border-white/10 bg-white/5 hover:bg-white/10 disabled:opacity-50"
+          >
+            {loading ? "Cargando…" : "Refrescar"}
+          </button>
+        </header>
 
-      {rutas.length === 0 ? (
-        <div className="rounded-xl border border-white/10 bg-neutral-950/40 p-6 text-neutral-400 text-sm">
-          No tienes rutas asignadas.
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {rutas.map((r) => (
-            <Link
-              key={r.id}
-              href={`/repartidor/rutas/${r.id}`}
-              className="rounded-xl border border-white/10 bg-neutral-950/40 p-4 hover:bg-white/5 active:scale-[0.99] transition"
-            >
-              <div className="flex items-center justify-between gap-3">
-                <div className="space-y-1 min-w-0">
-                  <div className="text-sm text-neutral-300">
-                    Ruta <span className="font-semibold text-neutral-100">{r.id.slice(0, 8)}</span>
+        {/* Sección: En entrega hoy */}
+        <section className="rounded-2xl border border-white/10 bg-neutral-900/40 p-3 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-semibold flex items-center gap-2">
+              En entrega hoy
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-200 border border-amber-500/30">
+                {activos.length}
+              </span>
+            </div>
+          </div>
+
+          {activos.length === 0 ? (
+            <p className="text-xs text-neutral-400">
+              No tienes pedidos activos para hoy.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {activos.map((p) => (
+                <div
+                  key={p.paradaId}
+                  className="rounded-xl border border-white/10 bg-neutral-950/40 p-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="space-y-1">
+                    <div className="text-[12px] text-neutral-400">
+                      Folio{" "}
+                      <span className="font-mono text-[12px] text-neutral-100">
+                        #{p.folio}
+                      </span>
+                    </div>
+                    <div className="text-[13px] font-semibold">
+                      {p.cliente}
+                    </div>
+                    <div className="text-[11px] text-neutral-400">
+                      Origen: {p.origen || "—"}
+                    </div>
+                    <div className="text-[11px] text-neutral-400">
+                      Destino: {p.destino || "—"}
+                    </div>
                   </div>
-                  <div className="text-[12px] text-neutral-400">Fecha: {r.fecha}</div>
-                </div>
-                <div className="text-right shrink-0">
-                  <div className="text-xs text-neutral-400">{r.done}/{r.total} completadas</div>
-                  <div className="mt-1 inline-block rounded-full bg-white/5 px-2 py-0.5 text-[11px] ring-1 ring-white/10 text-neutral-300">
-                    {r.estado}
+
+                  <div className="flex flex-col items-end gap-2 mt-2 sm:mt-0">
+                    <span className="rounded-full px-2 py-1 text-[11px] bg-amber-500/15 text-amber-200 border border-amber-500/40">
+                      En ruta
+                    </span>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => abrirGoogle(p.origen, p.destino)}
+                        className="rounded-lg px-3 py-1.5 text-[11px] bg-sky-500/20 text-sky-200 border border-sky-500/40"
+                      >
+                        Ver en mapa
+                      </button>
+                      <button
+                        onClick={() => finalizar(p.paradaId, p.pedidoId)}
+                        className="rounded-lg px-3 py-1.5 text-[11px] bg-emerald-500/20 text-emerald-200 border border-emerald-500/40"
+                      >
+                        Finalizar entrega
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </Link>
-          ))}
-        </div>
-      )}
-    </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* Sección: Finalizados hoy */}
+        <section className="rounded-2xl border border-white/10 bg-neutral-900/40 p-3 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-semibold flex items-center gap-2">
+              Finalizados hoy
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-200 border border-emerald-500/30">
+                {finalizados.length}
+              </span>
+            </div>
+          </div>
+
+          {finalizados.length === 0 ? (
+            <p className="text-xs text-neutral-400">
+              Aún no has finalizado pedidos hoy.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {finalizados.map((p) => (
+                <div
+                  key={p.paradaId}
+                  className="rounded-xl border border-white/10 bg-neutral-950/40 p-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="space-y-1">
+                    <div className="text-[12px] text-neutral-400">
+                      Folio{" "}
+                      <span className="font-mono text-[12px] text-neutral-100">
+                        #{p.folio}
+                      </span>
+                    </div>
+                    <div className="text-[13px] font-semibold">
+                      {p.cliente}
+                    </div>
+                    <div className="text-[11px] text-neutral-400">
+                      Origen: {p.origen || "—"}
+                    </div>
+                    <div className="text-[11px] text-neutral-400">
+                      Destino: {p.destino || "—"}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col items-end gap-2 mt-2 sm:mt-0">
+                    <span className="rounded-full px-2 py-1 text-[11px] bg-emerald-500/15 text-emerald-200 border border-emerald-500/40">
+                      Finalizado
+                    </span>
+                    <button
+                      onClick={() => abrirGoogle(p.origen, p.destino)}
+                      className="rounded-lg px-3 py-1.5 text-[11px] bg-sky-500/20 text-sky-200 border border-sky-500/40"
+                    >
+                      Ver en mapa
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
+    </main>
   );
 }

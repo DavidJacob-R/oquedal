@@ -1,3 +1,5 @@
+"use client";
+
 // app/admin/pedidos/page.tsx
 import React, { useEffect, useState } from "react";
 

@@ -1,120 +1,124 @@
 import Link from "next/link";
 
-function Stat({ k, v }: { k: string; v: string }) {
+export default function PantallaPrincipal() {
   return (
-    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4">
-      <div className="text-2xl font-semibold text-zinc-100">{v}</div>
-      <div className="text-sm text-zinc-400">{k}</div>
-    </div>
-  );
-}
-
-export default function HomePage() {
-  return (
-    <div className="grid gap-10">
-      {/* hero */}
-      <section className="grid gap-6 md:grid-cols-2 items-center">
-        <div className="grid gap-4">
-          <h1 className="text-4xl md:text-5xl font-bold leading-tight">
-            logística moderna para{" "}
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-fuchsia-400">
-              mudanzas y envíos
-            </span>
-          </h1>
-          <p className="text-zinc-400">
-            En <b>oquedal logística</b> movemos paquetes, muebles y mudanzas a nivel nacional.
-            Seguimiento claro, ventanas de horario flexibles y trato profesional.
-          </p>
-          <div className="flex gap-3">
-            <Link
-              href="/cliente/pedidos"
-              className="inline-flex items-center rounded-xl px-5 py-2.5 font-medium text-white bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500"
-            >
-              Ir al panel
-            </Link>
-            <a
-              href="#servicios"
-              className="inline-flex items-center rounded-xl px-5 py-2.5 font-medium border border-zinc-800 bg-zinc-900 hover:border-violet-500/50"
-            >
-              Ver servicios
-            </a>
+    <main className="min-h-screen bg-neutral-950 text-neutral-50">
+      <div className="mx-auto flex min-h-screen max-w-5xl items-center justify-center px-4 py-10">
+        <div className="w-full space-y-8">
+          <div className="space-y-3 text-center">
+            <p className="text-[11px] uppercase tracking-[0.3em] text-neutral-400">
+              Oquedal Logistics
+            </p>
+            <h1 className="text-3xl font-semibold leading-tight sm:text-4xl">
+              Empresa enfocada en mover tus pedidos de forma ordenada
+            </h1>
+            <p className="mx-auto max-w-2xl text-sm text-neutral-300 sm:text-base">
+              Somos una empresa de logistica que conecta clientes, administradores y repartidores
+              en una sola plataforma. La idea es simple: cada envio tiene punto de salida, punto de llegada
+              y un estado claro en todo momento.
+            </p>
           </div>
-        </div>
 
-        <div className="rounded-2xl border border-zinc-800 bg-gradient-to-br from-zinc-900 to-zinc-950 p-6">
-          <div className="grid gap-3">
-            <div className="text-sm text-zinc-400">¿Por qué elegirnos?</div>
-            <ul className="grid gap-2 text-sm">
-              <li className="flex items-start gap-2"><span className="mt-1 h-2 w-2 rounded-full bg-violet-400" /> Cobertura nacional y rutas optimizadas</li>
-              <li className="flex items-start gap-2"><span className="mt-1 h-2 w-2 rounded-full bg-violet-400" /> Manejo de muebles y voluminosos</li>
-              <li className="flex items-start gap-2"><span className="mt-1 h-2 w-2 rounded-full bg-violet-400" /> Ventanas de horario flexibles</li>
-              <li className="flex items-start gap-2"><span className="mt-1 h-2 w-2 rounded-full bg-violet-400" /> Soporte humano 24/7</li>
-              <li className="flex items-start gap-2"><span className="mt-1 h-2 w-2 rounded-full bg-violet-400" /> Cotización clara y sin sorpresas</li>
-            </ul>
-          </div>
-        </div>
-      </section>
-
-      {/* stats */}
-      <section className="grid gap-4 sm:grid-cols-3">
-        <Stat k="Entregas en el último año" v="12,400+" />
-        <Stat k="Satisfacción de clientes" v="98%" />
-        <Stat k="Unidades en ruta" v="80+" />
-      </section>
-
-      {/* servicios */}
-      <section id="servicios" className="grid gap-6">
-        <h2 className="text-xl font-semibold">Servicios</h2>
-        <div className="grid gap-4 md:grid-cols-3">
-          {[
-            { t: "Mudanzas residenciales", d: "Desde estudio hasta casa completa. Embalaje y desmontaje opcional." },
-            { t: "Envío de paquetes y pallets", d: "Puerta a puerta para cajas, paquetes y tarimas. Multi-destino." },
-            { t: "Muebles y voluminosos", d: "Manejo especial de muebles, electrodomésticos y obras." },
-          ].map((s) => (
-            <div key={s.t} className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
-              <div className="mb-1 text-violet-300 text-sm">oquedal</div>
-              <div className="text-lg font-semibold">{s.t}</div>
-              <p className="text-sm text-zinc-400 mt-1">{s.d}</p>
+          <div className="grid gap-5 md:grid-cols-3">
+            <div className="flex flex-col justify-between rounded-3xl bg-neutral-900/90 p-5 shadow-lg ring-1 ring-neutral-800">
+              <div className="space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-400">
+                  Quienes somos
+                </p>
+                <p className="text-sm text-neutral-200">
+                  Empresa dedicada a organizar entregas locales y foraneas. Tomamos todos los pedidos del dia
+                  y los convertimos en rutas claras para tus unidades y tu equipo.
+                </p>
+                <ul className="mt-2 space-y-1 text-xs text-neutral-400">
+                  <li>- Menos llamadas para preguntar por un pedido</li>
+                  <li>- Cada envio tiene registro de horario y estatus</li>
+                  <li>- Se ve que se entrego y que quedo pendiente</li>
+                </ul>
+              </div>
             </div>
-          ))}
-        </div>
-      </section>
 
-      {/* proceso */}
-      <section className="grid gap-6">
-        <h2 className="text-xl font-semibold">¿Cómo funciona?</h2>
-        <ol className="grid gap-3 md:grid-cols-4">
-          {["Crea tu pedido", "Programa fecha y franja", "Asignamos unidad", "Seguimiento y entrega"].map((p, i) => (
-            <li key={p} className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4">
-              <div className="text-sm text-zinc-400">Paso {i + 1}</div>
-              <div className="font-medium">{p}</div>
-            </li>
-          ))}
-        </ol>
-      </section>
+            <div className="flex flex-col justify-between rounded-3xl bg-neutral-900/90 p-5 shadow-lg ring-1 ring-neutral-800">
+              <div className="space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-400">
+                  Como trabajamos
+                </p>
+                <div className="space-y-2 text-sm text-neutral-200">
+                  <div className="flex gap-3">
+                    <span className="mt-0.5 h-6 w-6 flex-shrink-0 rounded-full bg-emerald-500 text-center text-xs font-bold text-neutral-950">
+                      1
+                    </span>
+                    <p>
+                      El cliente registra su pedido con origen, destino y horario.
+                    </p>
+                  </div>
+                  <div className="flex gap-3">
+                    <span className="mt-0.5 h-6 w-6 flex-shrink-0 rounded-full bg-emerald-400 text-center text-xs font-bold text-neutral-950">
+                      2
+                    </span>
+                    <p>
+                      El administrador acomoda los pedidos en el dia y arma las rutas.
+                    </p>
+                  </div>
+                  <div className="flex gap-3">
+                    <span className="mt-0.5 h-6 w-6 flex-shrink-0 rounded-full bg-emerald-300 text-center text-xs font-bold text-neutral-950">
+                      3
+                    </span>
+                    <p>
+                      El repartidor sigue la ruta y actualiza el estado de cada entrega.
+                    </p>
+                  </div>
+                </div>
+                <p className="mt-2 text-xs text-neutral-400">
+                  Todo queda guardado para revisar despues como se movio el dia.
+                </p>
+              </div>
+            </div>
 
-      {/* cta */}
-      <section className="rounded-2xl border border-violet-500/30 bg-gradient-to-br from-violet-600/10 to-fuchsia-600/10 p-6">
-        <div className="grid gap-4 md:grid-cols-2 md:items-center">
-          <div>
-            <div className="text-sm text-violet-300">¿Listo para mover?</div>
-            <h3 className="text-2xl font-semibold">Agenda tu servicio hoy</h3>
-            <p className="text-sm text-zinc-400">Levanta tu pedido en menos de 2 minutos.</p>
+            <div className="flex flex-col justify-between rounded-3xl bg-neutral-900/90 p-5 shadow-lg ring-1 ring-neutral-800">
+              <div className="space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-400">
+                  Entrar a la aplicacion
+                </p>
+                <p className="text-sm text-neutral-200">
+                  Elige el rol con el que vas a trabajar hoy. Cada rol ve solo lo que le toca.
+                </p>
+
+                <div className="mt-3 space-y-2">
+                  <Link
+                    href="/admin/pedidos"
+                    className="block rounded-2xl bg-emerald-500 px-4 py-2 text-center text-sm font-semibold text-neutral-950 transition hover:bg-emerald-400"
+                  >
+                    Entrar como administrador
+                  </Link>
+                  <Link
+                    href="/repartidor/pedidos"
+                    className="block rounded-2xl bg-neutral-800 px-4 py-2 text-center text-sm font-semibold text-neutral-50 transition hover:bg-neutral-700"
+                  >
+                    Entrar como repartidor
+                  </Link>
+                  <Link
+                    href="/cliente/pedidos"
+                    className="block rounded-2xl border border-neutral-700 px-4 py-2 text-center text-sm font-semibold text-neutral-100 transition hover:border-emerald-400"
+                  >
+                    Entrar como cliente
+                  </Link>
+                </div>
+
+                <div className="mt-3 space-y-1 text-xs text-neutral-400">
+                  <p>- Admin: ve el mapa completo del dia.</p>
+                  <p>- Repartidor: solo sus entregas de hoy.</p>
+                  <p>- Cliente: solo sus propios pedidos.</p>
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="md:justify-self-end">
-            <Link
-              href="/cliente/pedidos"
-              className="inline-flex items-center rounded-xl px-5 py-2.5 font-medium text-white bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500"
-            >
-              Ir al panel
-            </Link>
-          </div>
-        </div>
-      </section>
 
-      <footer className="pt-6 text-xs text-zinc-500">
-        © {new Date().getFullYear()} oquedal logística — todos los derechos reservados
-      </footer>
-    </div>
+          <p className="text-center text-xs text-neutral-500">
+            Resumen: somos una empresa de logistica que usa esta plataforma para que tus entregas
+            no dependan de mensajes sueltos, sino de un sistema claro y medible.
+          </p>
+        </div>
+      </div>
+    </main>
   );
 }

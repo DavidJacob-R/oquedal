@@ -215,9 +215,9 @@ export default function PedidosBoard() {
                       Entrega: {p.estado_entrega ?? "—"}
                     </Badge>
                     <a
-                      href={`/admin/pedidos/${p.id}`}
-                      className="rounded-lg bg-white/5 px-3 py-1.5 text-xs text-neutral-200 ring-1 ring-white/10 hover:bg-white/10"
-                    >
+                        href={`/admin/pedidos/${p.id}`}
+                        className="inline-flex items-center gap-1 rounded-md bg-white/5 px-2 py-1 text-xs text-neutral-200 ring-1 ring-white/10 hover:bg-white/10"
+                      >
                       Ver
                     </a>
                   </div>

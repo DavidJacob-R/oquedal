@@ -12,7 +12,7 @@ export default function PedidosPage() {
           <div>
             <h1 className="text-lg font-semibold tracking-wide">Pedidos</h1>
             <p className="text-xs text-neutral-400">
-              Vista minimal: primero <b>Pendientes</b>, luego <b>Confirmados</b>. Ordenados por registro.
+              Vista general de todos los pedidos realizados en el sistema.
             </p>
           </div>
         </div>

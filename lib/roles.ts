@@ -1,5 +1,8 @@
 // lib/roles.ts
 import { query } from "./db";
+// lib/quota.ts
+export const QUOTA_MAX_BLOCK = 8.0;      // tope duro
+export const QUOTA_EXTRA_START = 8.3;    // desde aquí marcamos "extra"
 
 // Asegura que exista un rol por nombre y devuelve su id.
 export async function ensureRole(nombre: string): Promise<string> {

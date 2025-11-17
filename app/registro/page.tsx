@@ -1,12 +1,17 @@
 "use client";
-import { useMemo, useState } from "react";
+
+import React, { useMemo, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
-function normalizeEmail(e: string) { return (e || "").trim().toLowerCase().replace(/\s+/g, ""); }
+function normalizeEmail(e: string) {
+  return (e || "").trim().toLowerCase().replace(/\s+/g, "");
+}
+
 const emailRegex = /^[^\s@]+@[^\s@]{2,}\.[^\s@]{2,}$/;
 
-export default function RegistroPage() {
+function RegistroForm() {
   const searchParams = useSearchParams();
+
   const next = useMemo(() => {
     const n = searchParams?.get("next") || "/cliente/pedidos";
     return n.startsWith("/") ? n : "/cliente/pedidos";
@@ -31,15 +36,15 @@ export default function RegistroPage() {
     return { ok: res.ok, data };
   }
 
-  const registrar = async (e: React.FormEvent) => {
+  const registrar = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setErr("");
 
     const em = normalizeEmail(email);
     if (!nombre.trim()) return setErr("El nombre es requerido");
-    if (!em || !emailRegex.test(em)) return setErr("Email inválido");
-    if (!pass || pass.length < 6) return setErr("Contraseña mínima 6 caracteres");
-    if (pass !== pass2) return setErr("Las contraseñas no coinciden");
+    if (!em || !emailRegex.test(em)) return setErr("Email invalido");
+    if (!pass || pass.length < 6) return setErr("Contrasena minima 6 caracteres");
+    if (pass !== pass2) return setErr("Las contrasenas no coinciden");
 
     setLoading(true);
 
@@ -66,10 +71,13 @@ export default function RegistroPage() {
 
     // 3) setea cookie de sesion (y limpia cualquier admin)
     try {
-      document.cookie = `usuario_id=${encodeURIComponent(String(userId))}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+      document.cookie = `usuario_id=${encodeURIComponent(String(userId))}; Path=/; Max-Age=${
+        60 * 60 * 24 * 7
+      }; SameSite=Lax`;
       document.cookie = `admin_id=; Path=/; Max-Age=0; SameSite=Lax`;
-      // opcional: guardar local
-      try { localStorage.setItem("usuario_id", String(userId)); } catch {}
+      try {
+        localStorage.setItem("usuario_id", String(userId));
+      } catch {}
     } catch {}
 
     // 4) “calienta” whoami para que el backend cree/ligue el cliente y nombre
@@ -86,17 +94,63 @@ export default function RegistroPage() {
   return (
     <div className="max-w-sm mx-auto grid gap-4">
       <h1 className="text-2xl font-semibold">Crear cuenta</h1>
-      {err && <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{err}</div>}
-      <form onSubmit={registrar} className="grid gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
-        <input className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2" placeholder="nombre completo" value={nombre} onChange={(e)=>setNombre(e.target.value)} />
-        <input type="email" className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2" placeholder="email" value={email} onChange={(e)=>setEmail(e.target.value)} />
-        <input className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2" placeholder="teléfono (opcional)" value={tel} onChange={(e)=>setTel(e.target.value)} />
-        <input type="password" className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2" placeholder="contraseña" value={pass} onChange={(e)=>setPass(e.target.value)} />
-        <input type="password" className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2" placeholder="repite contraseña" value={pass2} onChange={(e)=>setPass2(e.target.value)} />
-        <button disabled={loading} className="rounded-xl px-4 py-2 text-white bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500">
+      {err && (
+        <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+          {err}
+        </div>
+      )}
+      <form
+        onSubmit={registrar}
+        className="grid gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4"
+      >
+        <input
+          className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2"
+          placeholder="nombre completo"
+          value={nombre}
+          onChange={(e) => setNombre(e.target.value)}
+        />
+        <input
+          type="email"
+          className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2"
+          placeholder="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+        <input
+          className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2"
+          placeholder="telefono (opcional)"
+          value={tel}
+          onChange={(e) => setTel(e.target.value)}
+        />
+        <input
+          type="password"
+          className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2"
+          placeholder="contrasena"
+          value={pass}
+          onChange={(e) => setPass(e.target.value)}
+        />
+        <input
+          type="password"
+          className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2"
+          placeholder="repite contrasena"
+          value={pass2}
+          onChange={(e) => setPass2(e.target.value)}
+        />
+        <button
+          disabled={loading}
+          className="rounded-xl px-4 py-2 text-white bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500"
+        >
           {loading ? "Creando..." : "Registrarse"}
         </button>
       </form>
     </div>
+  );
+}
+
+export default function RegistroPage() {
+  return (
+    <Suspense fallback={<div>Cargando...</div>}>
+      <RegistroForm />
+    </Suspense>
   );
 }

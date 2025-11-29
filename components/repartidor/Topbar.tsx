@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import Image from "next/image";
 
 export default function RepartidorTopbar() {
   const router = useRouter();
@@ -29,10 +30,17 @@ export default function RepartidorTopbar() {
   return (
     <header className="sticky top-0 z-40 border-b border-white/10 bg-[#0b0b10]/80 backdrop-blur-md">
       <nav className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-        <Link href="/repartidor/rutas" className="flex items-center gap-2">
-          <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500" />
-          <span className="font-medium tracking-wide text-zinc-100">Panel Repartidor</span>
-        </Link>
+<Link href="/repartidor/rutas" className="flex items-center gap-2">
+  <Image
+    src="/logo-oquedal.png"
+    alt="Oquedal logística"
+    width={65}
+    height={65}
+    className="rounded-full"
+  />
+  <span className="font-medium tracking-wide text-zinc-100">Panel Repartidor</span>
+</Link>
+
 
         <div className="flex items-center gap-2">
           <Link

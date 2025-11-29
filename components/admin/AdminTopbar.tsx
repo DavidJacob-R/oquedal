@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
+
 
 type Props = {
   onMenuClick?: () => void;
@@ -45,10 +47,19 @@ export default function AdminTopbar({ onMenuClick, onCollapseClick, collapsed }:
           {collapsed ? <span className="i i-panel-right" /> : <span className="i i-panel-left" />}
         </button>
 
-        <div className="ml-1 flex items-center gap-2">
-          <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-orange-500 to-orange-600 ring-1 ring-white/20" />
-          <div className="text-sm font-semibold tracking-wide">Oquedal <span className="text-orange-400">Admin</span></div>
-        </div>
+<div className="ml-1 flex items-center gap-2">
+  <Image
+    src="/logo-oquedal.png"
+    alt="Oquedal logística"
+    width={65}
+    height={65}
+    className="rounded-full ring-1 ring-white/20"
+  />
+  <div className="text-sm font-semibold tracking-wide text-white">
+    Oquedal <span className="text-orange-400">Admin</span>
+  </div>
+</div>
+
 
         <div className="ml-auto flex items-center gap-2">
           <div className="relative">

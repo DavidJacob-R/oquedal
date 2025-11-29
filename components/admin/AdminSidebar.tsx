@@ -32,10 +32,7 @@ export default function AdminSidebar({ collapsed = false }: { collapsed?: boolea
     <aside className={`fixed left-0 top-[64px] z-40 h-[calc(100dvh-64px)] ${collapsed ? "w-20" : "w-64"} border-r border-white/10 bg-neutral-900/80 p-3`}>
       <div className="mb-4 px-2">
         {!collapsed && <div className="text-xs text-neutral-400 uppercase mb-2">Admin</div>}
-        <div className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded bg-gradient-to-br from-orange-500 to-orange-600" />
-          {!collapsed && <div className="font-semibold">Panel</div>}
-        </div>
+
       </div>
 
       <nav className="overflow-y-auto pr-2">

@@ -1,6 +1,6 @@
-// components/shared/Navbar.tsx
 "use client";
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useState } from "react";
 
 type Who =
@@ -33,8 +33,16 @@ export default function Navbar() {
     <header className="sticky top-0 z-50 border-b border-zinc-800/80 bg-[#0b0b10]/80 backdrop-blur-lg">
       <nav className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2">
-          <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-violet-600 to-fuchsia-600" />
-          <span className="font-semibold tracking-wide text-zinc-100">oquedal logística</span>
+          <Image
+            src="/logo-oquedal.png"
+            alt="Oquedal logística"
+            width={65}
+            height={65}
+            className="rounded-full"
+          />
+          <span className="font-semibold tracking-wide text-zinc-100">
+            oquedal logística
+          </span>
         </Link>
 
         <div className="flex items-center gap-2">

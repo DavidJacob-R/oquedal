@@ -1,6 +1,6 @@
 // components/shared/GlobalTopbar.tsx
 "use client";
-
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useMemo } from "react";
 
@@ -20,9 +20,16 @@ export default function GlobalTopbar() {
     <header className="fixed inset-x-0 top-0 z-40 h-14 bg-white/95 backdrop-blur border-b border-neutral-200">
       <div className="mx-auto max-w-[1200px] px-4 h-full flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="h-8 w-8 rounded bg-orange-500" />
+          <Image
+            src="/logo-oquedal.png"
+            alt="Oquedal logística"
+            width={65}
+            height={65}
+            className="rounded-full"
+          />
           <span className="font-semibold text-neutral-900">Oquedal</span>
         </div>
+
 
         <nav className="hidden md:flex items-center gap-4">
           <a href="/" className="text-sm text-neutral-700">Inicio</a>

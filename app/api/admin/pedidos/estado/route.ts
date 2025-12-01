@@ -4,46 +4,89 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { pool } from "@/lib/db";
 
-const CANON = new Map<string, "aceptado" | "rechazado" | "pendiente">([
-  ["aceptado","aceptado"], ["aprobado","aceptado"], ["accept","aceptado"], ["accepted","aceptado"], ["approve","aceptado"], ["approved","aceptado"], ["ok","aceptado"], ["confirmado","aceptado"], ["confirmar","aceptado"], ["aceptar","aceptado"], ["acepto","aceptado"],
-  ["rechazado","rechazado"], ["denegado","rechazado"], ["reject","rechazado"], ["rejected","rechazado"], ["rechazar","rechazado"], ["rechazo","rechazado"], ["cancelado","rechazado"], ["cancelled","rechazado"], ["cancelado_por_admin","rechazado"],
-  ["pendiente","pendiente"]
+type Canon = "aceptado" | "rechazado" | "pendiente";
+type DbEstado = "pendiente" | "confirmado" | "cancelado";
+
+// Normalizamos muchas variantes (aceptar, aprobar, cancelar, etc.) a solo 3 estados canonicos
+const CANON = new Map<string, Canon>([
+  // ACEPTADO
+  ["aceptado", "aceptado"],
+  ["aprobado", "aceptado"],
+  ["confirmado", "aceptado"],
+  ["ok", "aceptado"],
+  ["aceptar", "aceptado"],
+  ["aprobar", "aceptado"],
+
+  // RECHAZADO / CANCELADO
+  ["rechazado", "rechazado"],
+  ["denegado", "rechazado"],
+  ["cancelado", "rechazado"],
+  ["cancel", "rechazado"],
+  ["cancelado_por_admin", "rechazado"],
+  ["cancelled", "rechazado"],
+  ["reject", "rechazado"],
+  ["rejected", "rechazado"],
+
+  // PENDIENTE
+  ["pendiente", "pendiente"],
+  ["pending", "pendiente"],
 ]);
+
+function canonToDb(c: Canon): DbEstado {
+  if (c === "aceptado") return "confirmado";
+  if (c === "rechazado") return "cancelado";
+  return "pendiente";
+}
 
 export async function POST(req: Request) {
   try {
     const b = await req.json().catch(() => ({}));
-    const id = String(b?.id || "").trim();
-    const estadoRaw = String(b?.estado || "").trim().toLowerCase();
-    const estado = CANON.get(estadoRaw);
-    if (!id || !estado) {
-      return NextResponse.json({ ok: false, msg: "datos_invalidos" }, { status: 400 });
-    }
+    const id = String((b as any)?.id || "").trim();
 
-    // intenta actualizar columna 'estado'; si no existe, intenta 'accion'
-    try {
-      const q = await pool.query(
-        `update public.pedido set estado = $2 where id = $1::uuid returning id, estado`,
-        [id, estado]
+    // Permitimos que el frontend mande "estado" o "accion"
+    const raw = ((b as any)?.estado ?? (b as any)?.accion ?? "")
+      .toString()
+      .trim()
+      .toLowerCase();
+
+    const canon = CANON.get(raw);
+    if (!id || !canon) {
+      return NextResponse.json(
+        { ok: false, msg: "datos_invalidos" },
+        { status: 400 }
       );
-      if (q.rowCount) return NextResponse.json({ ok: true, row: q.rows[0] });
-    } catch (e: any) {
-      if (e?.code !== "42703") throw e; // columna no existe
     }
 
-    try {
-      const q2 = await pool.query(
-        `update public.pedido set accion = $2 where id = $1::uuid returning id, accion as estado`,
-        [id, estado]
+    const nuevoEstado: DbEstado = canonToDb(canon);
+
+    const q = await pool.query(
+      `
+      UPDATE public.pedido
+      SET estado = $2::text
+      WHERE id = $1::uuid
+      RETURNING id::text, estado
+      `,
+      [id, nuevoEstado]
+    );
+
+    if (!q.rowCount) {
+      return NextResponse.json(
+        { ok: false, msg: "no_encontrado" },
+        { status: 404 }
       );
-      if (q2.rowCount) return NextResponse.json({ ok: true, row: q2.rows[0] });
-    } catch (e: any) {
-      if (e?.code !== "42703") throw e;
     }
 
-    return NextResponse.json({ ok: false, msg: "columna_estado_no_encontrada" }, { status: 500 });
+    return NextResponse.json({
+      ok: true,
+      id: q.rows[0].id,
+      estado: q.rows[0].estado,
+      canon,
+    });
   } catch (e) {
     console.error(e);
-    return NextResponse.json({ ok: false, msg: "error_interno" }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, msg: "error_interno" },
+      { status: 500 }
+    );
   }
 }

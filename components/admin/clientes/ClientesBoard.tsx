@@ -1,4 +1,3 @@
-// components/admin/clientes/ClientesBoard.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
